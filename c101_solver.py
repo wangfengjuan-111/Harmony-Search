@@ -56,8 +56,9 @@ try:
 
     matplotlib.use("Agg")            # 无界面环境也能保存 PNG
     import matplotlib.pyplot as plt
-    plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "sans-serif"]
-    plt.rcParams["axes.unicode_minus"] = False
+    font_manager.fontManager.addfont('SimHei.ttf')
+    matplotlib.rcParams['font.sans-serif'] = ['SimHei']
+    matplotlib.rcParams['axes.unicode_minus'] = False # 修复负号方框
     HAS_MPL = True
 except ImportError:
     HAS_MPL = False
