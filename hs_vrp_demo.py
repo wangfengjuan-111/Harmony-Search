@@ -42,20 +42,7 @@ import random
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import streamlit as st
-
-import matplotlib
-# 适配Streamlit Cloud 中文
-import matplotlib
-from matplotlib import font_manager
-
-# 注册项目内的黑体字体
-font_manager.fontManager.addfont('SimHei.ttf')
-matplotlib.rcParams['font.sans-serif'] = ['SimHei']
-matplotlib.rcParams['axes.unicode_minus'] = False # 修复负号方框
-
 import matplotlib.pyplot as plt
-
-
 
 import c101_solver as S
 
@@ -75,8 +62,8 @@ def build_full_instance():
 
 
 # ==============================================================================
-# HS 单步即兴（与 c101_solver.harmony_search 同构，但参数实时读自滑块，
-# 且不内置停滞重启 —— 早熟现象要留给观众亲眼看到）
+# HS 单步即兴（与 c101_solver.harmony_search 同构，但参数实时读自滑块；
+# 停滞重启做成可开关 —— 关掉就能亲眼看到早熟/长期停滞现象）
 # ==============================================================================
 def hs_step():
     ss = st.session_state
@@ -121,6 +108,27 @@ def hs_step():
     if c < ss.best_cost:
         ss.best_cost, ss.best_perm = c, new_p[:]
         ss.last_improve = ss.it + 1
+
+    # --- 停滞重启（逃逸机制，复用 c101_solver.harmony_search 的方案）：
+    #     连续 restart_stall 代无改进时，对历史最优做 3 次路线级随机扰动，
+    #     再用大预算抛光（常规抛光无法从扰动中恢复并突破局部最优），
+    #     结果注回记忆库 —— 否则库顶被锁死，搜索退化为反复报告现有解 ---
+    if ss.restart_on and (ss.it + 1 - ss.last_improve) >= int(ss.restart_stall):
+        ss.last_improve = ss.it + 1          # 重置停滞计数
+        ss.restarts += 1
+        rts2 = S.split(ss.best_perm)[2]
+        for _ in range(3):
+            cand, _k = S.sample_neighbor(rts2, rng)
+            if cand is not None:
+                rts2 = cand
+        rts2, c2 = S.improve_routes(rts2, rng,
+                                    budget=max(200, int(ss.polish) * 10))
+        if c2 < hm[-1][0]:
+            hm[-1] = (c2, S.routes_to_perm(rts2))
+            hm.sort(key=lambda x: x[0])
+        if c2 < ss.best_cost:
+            ss.best_cost, ss.best_perm = c2, S.routes_to_perm(rts2)[:]
+
     ss.it += 1
     ss.history.append(ss.best_cost)
     ss.new_costs.append(c)
@@ -152,6 +160,7 @@ def init_session():
     ss.it = 0
     ss.last_improve = 0
     ss.last_new = None
+    ss.restarts = 0
     ss.running = False
     ss.rng = rng
     # 记录本次构建所用的环境参数，用于检测变动后自动重置
@@ -184,18 +193,29 @@ def draw_routes():
 
 
 def draw_convergence():
-    """收敛曲线：横轴迭代次数，纵轴目标函数值（车辆数×10000 + 总距离）。"""
+    """收敛曲线：横轴迭代次数，双纵轴 —— 左轴（蓝）跟随 best-so-far，
+    右轴（灰）跟随每次即兴的新和声。初始解质量好时两条序列的数量级
+    相差悬殊，共用一个轴会把 best-so-far 的下降压成直线。"""
     ss = st.session_state
     fig, ax = plt.subplots(figsize=(6.4, 4.4))
+    ax2 = ax.twinx()
     ax.plot(range(len(ss.history)), ss.history, lw=1.6, color="tab:blue",
-            label="全局最优 (best-so-far)")
+            label="全局最优 (best-so-far)【左轴】")
     if ss.new_costs:
-        ax.scatter(range(1, len(ss.history)), ss.new_costs, s=6, color="gray",
-                   alpha=0.35, label="每次即兴的新和声", zorder=2)
+        ax2.scatter(range(1, len(ss.history)), ss.new_costs, s=6, color="gray",
+                    alpha=0.35, label="每次即兴的新和声【右轴】", zorder=2)
     ax.set_xlabel("迭代次数")
-    ax.set_ylabel("目标函数值（车辆数×10000 + 总距离）")
-    ax.set_title("收敛曲线", fontsize=11)
-    ax.legend(fontsize=8)
+    ax.set_ylabel("全局最优目标函数值", color="tab:blue")
+    ax2.set_ylabel("新和声目标函数值", color="dimgray")
+    ax.tick_params(axis="y", labelcolor="tab:blue")
+    ax2.tick_params(axis="y", labelcolor="dimgray")
+    ax.margins(y=0.08)
+    ax2.margins(y=0.08)
+    ax.set_title("收敛曲线（双纵轴：左=最优，右=新和声）", fontsize=11)
+    # 合并两个轴的图例
+    h1, l1 = ax.get_legend_handles_labels()
+    h2, l2 = ax2.get_legend_handles_labels()
+    ax.legend(h1 + h2, l1 + l2, fontsize=8, loc="upper right")
     ax.grid(alpha=0.3)
     fig.tight_layout()
     return fig
@@ -279,6 +299,16 @@ with st.sidebar:
               help="音调调节时能与刚放入基因交换的近邻位置数；大=全局探索，小=精细开发")
 
     st.divider()
+    st.subheader("逃逸机制（防早熟）")
+    st.checkbox("停滞重启", key="restart_on", value=True,
+                help="连续 restart_stall 代无改进时，对历史最优做路线级扰动 + "
+                     "大预算抛光后注回记忆库（复用 c101_solver 的重启方案）。"
+                     "关闭后可观察「库顶锁死 → 曲线长期走平」的早熟现象")
+    st.slider("重启阈值（连续无改进代数）", 20, 200, 60, 10, key="restart_stall",
+              help="阈值越小重启越频繁：逃逸能力强，但每次重启都是一次局部扰动，"
+                   "曲线跳变更剧烈")
+
+    st.divider()
     st.subheader("环境参数（初始解相关变动即自动重置）")
     st.slider("最大迭代次数", 100, 2000, 500, 100, key="max_it",
               help="连续运行到达上限后自动停止；单步迭代也会被拦下。"
@@ -323,7 +353,9 @@ with st.sidebar:
         "- HMCR 0.85→0.80：随机性更强，收敛慢但可能跳出局部最优\n"
         "- PAR 0.30→0.50：局部微调更频繁，曲线波动更大\n"
         "- bw 由大调小：观察从大范围探索到精细开发的转变\n"
-        "- 初始解来源选「高质量 I1」：曲线从第 0 代就走平（死锁现象）")
+        "- 初始解来源选「高质量 I1」：曲线从第 0 代就走平（死锁现象）\n"
+        "- 关掉「停滞重启」：观察库顶锁死后的长期停滞；打开后每次重启"
+        "灰点带跳变、蓝线继续下棘轮")
 
 # ---------------- 初始化 / 环境参数变动自动重置 ----------------
 if "hm" not in st.session_state:
@@ -347,16 +379,18 @@ if st.session_state.running:
 # ---------------- 右侧可视化区 ----------------
 ss = st.session_state
 
-m1, m2, m3, m4, m5 = st.columns(5)
+m1, m2, m3, m4, m5, m6 = st.columns(6)
 m1.metric("迭代次数", ss.it)
 m2.metric("当前最优", f"{ss.best_cost:.1f}")
 m3.metric("HM 最差", f"{ss.hm[-1][0]:.1f}")
 m4.metric("HM 平均", f"{sum(c for c, _ in ss.hm) / len(ss.hm):.1f}")
 m5.metric("已停滞代数", ss.it - ss.last_improve)
+m6.metric("已重启次数", ss.restarts)
 
-if ss.last_improve == 0 and ss.it > 30:
+if not ss.restart_on and ss.it - ss.last_improve > 30:
     st.warning("已超过 30 代无任何改进 —— 这就是「早熟」：库顶被初始解占据，"
-               "新和声难以超越。试试调低 HMCR、调大 PAR/bw，或点【重置】换一批初始解。")
+               "新和声难以超越。试试调低 HMCR、调大 PAR/bw，"
+               "或在左侧打开【停滞重启】逃逸机制。")
 
 if ss.it >= int(ss.max_it):
     st.info(f"已达最大迭代次数 {int(ss.max_it)}（可在左侧调大上限后继续运行，"
