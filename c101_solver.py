@@ -1078,5 +1078,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-print("当前工作目录：", cwd)
