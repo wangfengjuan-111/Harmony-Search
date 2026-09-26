@@ -49,9 +49,13 @@ from statistics import mean, stdev
 # ---- 绘图（缺 matplotlib 时只跳过画图，不影响求解） ----
 try:
     import matplotlib
-    # 适配Streamlit Cloud 中文
-    matplotlib.rcParams['font.sans-serif'] = ['WenQuanYi Zen Hei']
-    matplotlib.rcParams['axes.unicode_minus'] = False # 解决负号变成方框
+    from matplotlib import font_manager
+    
+    # 注册项目内的黑体字体
+    font_manager.fontManager.addfont('SimHei.ttf')
+    matplotlib.rcParams['font.sans-serif'] = ['SimHei']
+    matplotlib.rcParams['axes.unicode_minus'] = False # 修复负号方框
+    
     import matplotlib.pyplot as plt
 
     matplotlib.use("Agg")            # 无界面环境也能保存 PNG
