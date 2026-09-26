@@ -42,6 +42,7 @@ import random
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import streamlit as st
+import matplotlib
 from matplotlib import font_manager
     
 # 注册项目内的黑体字体
