@@ -42,7 +42,13 @@ import random
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import streamlit as st
+
+import matplotlib
+# 适配Streamlit Cloud 中文
+matplotlib.rcParams['font.sans-serif'] = ['WenQuanYi Zen Hei']
+matplotlib.rcParams['axes.unicode_minus'] = False # 解决负号变成方框
 import matplotlib.pyplot as plt
+
 
 import c101_solver as S
 
