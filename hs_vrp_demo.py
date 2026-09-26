@@ -42,6 +42,13 @@ import random
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import streamlit as st
+from matplotlib import font_manager
+    
+# 注册项目内的黑体字体
+font_manager.fontManager.addfont('SimHei.ttf')
+matplotlib.rcParams['font.sans-serif'] = ['SimHei']
+matplotlib.rcParams['axes.unicode_minus'] = False # 修复负号方框
+    
 import matplotlib.pyplot as plt
 
 import c101_solver as S
