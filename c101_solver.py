@@ -49,6 +49,11 @@ from statistics import mean, stdev
 # ---- 绘图（缺 matplotlib 时只跳过画图，不影响求解） ----
 try:
     import matplotlib
+    # 适配Streamlit Cloud 中文
+    matplotlib.rcParams['font.sans-serif'] = ['WenQuanYi Zen Hei']
+    matplotlib.rcParams['axes.unicode_minus'] = False # 解决负号变成方框
+    import matplotlib.pyplot as plt
+
     matplotlib.use("Agg")            # 无界面环境也能保存 PNG
     import matplotlib.pyplot as plt
     plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "sans-serif"]
@@ -1074,14 +1079,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-import os
-
-
-# 1. 获取当前脚本所在目录（推荐）
-current_dir = os.path.dirname(os.path.abspath(__file__))
-print("脚本所在路径：", current_dir)
-
-# 2. 获取当前工作目录（命令行启动的目录，不是脚本目录）
-cwd = os.getcwd()
 print("当前工作目录：", cwd)
